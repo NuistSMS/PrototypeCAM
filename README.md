@@ -45,7 +45,7 @@ PrototypeCAM/
 
 [semanticCAM.py](semanticCAM.py) supports two semantic analysis modes via the `--analysis-mode` parameter, corresponding to two questions defined in the paper:
 
-### `misclassification` — *Why $P$ rather than $Q$?*
+### `misclassification` — *Why P rather than Q?*
 
 Contrastive explanation for misclassified regions. For pixels whose **ground-truth label is $Q$** but the model **predicted $P$**, this mode highlights what features in the activation map drove the model to choose class $P$ over the correct class $Q$.
 
@@ -61,7 +61,7 @@ python semanticCAM.py \
     --output-dir cam_mis
 ```
 
-### `prediction` — *Why $P$?*
+### `prediction` — *Why P?*
 
 Explanation for predicted regions. For all pixels **predicted as class $P$**, this mode highlights what features support the model's prediction of class $P$ against all other competing classes.
 
