@@ -16,7 +16,7 @@ PrototypeCAM/
 │   └── utils/
 ├── model/
 │   ├── unet.py                     # U-Net 
-│   └── Duke.pth                    # Pre-trained model weights
+│   └── Duke.pth                    # Pre-trained model weights (download separately, see Quick Start)
 └── data/
     └── Duke/
         ├── images/
@@ -78,10 +78,17 @@ python semanticCAM.py \
 
 ## Quick Start
 
-### 1. Environment
+### 1. Download Pre-trained Weights
 
-```bash
-pip install torch torchvision opencv-python numpy scipy pillow pandas tqdm
+The pre-trained U-Net weights (`Duke.pth`) are hosted on Baidu Netdisk. Download and place the file under `./model/`:
+
+- **Baidu Netdisk** : <https://pan.baidu.com/s/1OGGbIATWvw_yFX4N9-DN1g?pwd=kqqm>
+- **Extraction code** : `kqqm`
+
+After downloading, the expected path is:
+
+```
+./model/Duke.pth
 ```
 
 ### 2. Run PrototypeCAM (Default Configuration)
@@ -107,10 +114,8 @@ python semanticCAM.py \
 | `--n-prototypes` | `6` | Number of prototypes per class |
 | `--proto-iterations` | `20` | Number of prototype update iterations |
 | `--proto-gamma` | `0.9` | Momentum coefficient for prototype update |
-| `--proto-temperature` | `0.1` | Temperature for soft assignment |
 | `--proto-use-contrastive` | `True` | Enable contrastive learning |
 | `--proto-contrastive-weight` | `0.5` | Negative weight $\alpha$ for contrastive scoring |
 | `--proto-eta-attract` | `0.2` | Intra-class attraction learning rate $\eta^+$ |
 | `--proto-eta-repel` | `2.2` | Inter-class repulsion learning rate $\eta^-$ |
 | `--save-type` | `2` | Output type: 1=combined, 2=cam+edge, 3=cam, 4=pure heatmap, 5=npy, 6=heatmap+edge |
-| `--restore-size` | `True` | Restore output to original image resolution |
