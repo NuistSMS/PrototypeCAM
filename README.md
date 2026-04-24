@@ -1,7 +1,7 @@
 # Prototype-CAM
 
 > **Paper**: *Prototype-CAM: A Prototype-Based Contrastive Class Activation Map for Retinal Layer Segmentation in OCT Images*
-![Uploading overview.png…]()
+[Overview of Prototype-CAM](overview.png)
 
 ## Project Structure
 
