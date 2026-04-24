@@ -35,7 +35,7 @@ def kmeans_plus_plus_init(features, n_prototypes, device='cpu'):
 
     prototypes = torch.stack(centers)
 
-    return prototypes  # [N.D]
+    return prototypes
 
 
 def sinkhorn_knopp(out, n_iterations=3, epsilon=0.05):
@@ -88,35 +88,23 @@ def compute_mahalanobis_force_vectorized(prototypes, targets, cov_inv, epsilon=0
     return forces
 
 
-# =====================================================================
-# NEW: Bayesian prior helper functions
-# =====================================================================
-
 def compute_gaussian_log_likelihood(features, prototypes, cov, reg_lambda=0.01):
     """
-    Compute log p(x | c) using max-component approximation.
-
-    For each class c with K prototypes, the class-conditional likelihood is
-    approximated as:
-        p(x | c) ≈ max_k  p(x | p_k^c, Sigma_k^c)
-
-    where p(x | p_k, Sigma) is a multivariate Gaussian density.
-
-    This corresponds to Eq. (class_likelihood_approx) in the paper.
+    Compute log p(x | c) using max-component approximation across K prototypes,
+    where each component is a multivariate Gaussian density with shared Sigma_c.
 
     Args:
-        features:   [N, D] spatial feature tokens
-        prototypes: [K, D] class prototypes
-        cov:        [D, D] class covariance matrix (shared across prototypes)
+        features:   [N, D]
+        prototypes: [K, D]
+        cov:        [D, D]
 
     Returns:
-        max_log_lik: [N] max log-likelihood across prototypes for each token
+        max_log_lik: [N]
     """
     D = features.shape[1]
     cov_inv = torch.linalg.inv(cov)
     log_det = torch.logdet(cov)
 
-    # Constant term: -D/2 * log(2*pi)
     const = -0.5 * D * np.log(2 * np.pi)
 
     log_likelihoods = []
@@ -134,17 +122,7 @@ def compute_gaussian_log_likelihood(features, prototypes, cov, reg_lambda=0.01):
 
 def compute_class_prior(pred_mask_flat, classes):
     """
-    Estimate class prior pi_c from pixel frequencies in the prediction mask.
-
-    This corresponds to Eq. (class_prior) in the paper:
-        pi_c = N_c / sum_{c'} N_{c'}
-
-    Args:
-        pred_mask_flat: [HW] flattened prediction mask with class labels
-        classes:        list of class indices to consider
-
-    Returns:
-        priors: dict {class_idx: pi_c}
+    Estimate class prior pi_c = N_c / sum_{c'} N_{c'} from prediction mask pixel counts.
     """
     counts = {}
     total = 0
@@ -163,22 +141,18 @@ def compute_class_prior(pred_mask_flat, classes):
 def compute_multiclass_posterior(features, class_prototypes, class_covs,
                                  class_priors, target_class, reg_lambda=0.01):
     """
-    Compute P(target_class | x) via Bayes' theorem over all classes.
-
-    This corresponds to Eq. (posterior) in the paper:
-        P(c | x) = pi_c * p(x|c) / sum_{c'} pi_{c'} * p(x|c')
-
-    Implemented in log-space with softmax for numerical stability.
+    Compute P(target_class | x) = pi_c * p(x|c) / sum_{c'} pi_{c'} * p(x|c')
+    via Bayes' theorem, implemented in log-space with softmax for stability.
 
     Args:
-        features:         [N, D] spatial feature tokens
-        class_prototypes: dict {cls: [K, D] prototypes}
-        class_covs:       dict {cls: [D, D] covariance matrices}
-        class_priors:     dict {cls: float prior probability}
-        target_class:     int, the class P for which to compute posterior
+        features:         [N, D]
+        class_prototypes: dict {cls: [K, D]}
+        class_covs:       dict {cls: [D, D]}
+        class_priors:     dict {cls: float}
+        target_class:     int
 
     Returns:
-        posterior: [N] posterior probability P(target_class | x_i) for each token
+        target_posterior: [N]
     """
     classes = list(class_prototypes.keys())
     log_joints = []
@@ -202,31 +176,17 @@ def compute_multiclass_posterior(features, class_prototypes, class_covs,
 def compute_pairwise_posterior(features, proto_P, cov_P, prior_P,
                                proto_Q, cov_Q, prior_Q, reg_lambda=0.01):
     """
-    Compute pairwise posterior P(P | x; P, Q) using sigmoid form.
-
-    This corresponds to Eq. (pairwise_sigmoid) in the paper:
+    Pairwise posterior in sigmoid form:
         P(P|x; P,Q) = sigma( log(pi_P/pi_Q)
                              + 0.5*(M^2(x;q*,Sigma_Q) - M^2(x;p*,Sigma_P))
                              + 0.5*log(|Sigma_Q|/|Sigma_P|) )
-
-    Args:
-        features: [N, D]
-        proto_P:  [K, D] prototypes of class P
-        cov_P:    [D, D] covariance of class P
-        prior_P:  float, pi_P
-        proto_Q:  [K, D] prototypes of class Q
-        cov_Q:    [D, D] covariance of class Q
-        prior_Q:  float, pi_Q
-
-    Returns:
-        posterior_P: [N] pairwise posterior for class P
     """
     cov_P_inv = torch.linalg.inv(cov_P)
     cov_Q_inv = torch.linalg.inv(cov_Q)
     log_det_P = torch.logdet(cov_P)
     log_det_Q = torch.logdet(cov_Q)
 
-    # Mahalanobis distance to best prototype of P: min_k M^2(x; p_k^P, Sigma_P)
+    # min_k M^2(x; p_k^P, Sigma_P)
     mahal_P_list = []
     for k in range(proto_P.shape[0]):
         diff = features - proto_P[k].unsqueeze(0)
@@ -234,7 +194,7 @@ def compute_pairwise_posterior(features, proto_P, cov_P, prior_P,
         mahal_P_list.append(m2)
     mahal_P = torch.stack(mahal_P_list, dim=1).min(dim=1).values  # [N]
 
-    # Mahalanobis distance to best prototype of Q: min_k M^2(x; q_k^Q, Sigma_Q)
+    # min_k M^2(x; q_k^Q, Sigma_Q)
     mahal_Q_list = []
     for k in range(proto_Q.shape[0]):
         diff = features - proto_Q[k].unsqueeze(0)
@@ -242,7 +202,6 @@ def compute_pairwise_posterior(features, proto_P, cov_P, prior_P,
         mahal_Q_list.append(m2)
     mahal_Q = torch.stack(mahal_Q_list, dim=1).min(dim=1).values  # [N]
 
-    # Sigmoid argument: log(pi_P/pi_Q) + 0.5*(M^2_Q - M^2_P) + 0.5*log(|Sigma_Q|/|Sigma_P|)
     log_prior_ratio = np.log((prior_P + 1e-8) / (prior_Q + 1e-8))
     mahal_diff = 0.5 * (mahal_Q - mahal_P)
     log_det_ratio = 0.5 * (log_det_Q - log_det_P)
@@ -251,9 +210,6 @@ def compute_pairwise_posterior(features, proto_P, cov_P, prior_P,
     posterior_P = torch.sigmoid(logit)  # [N]
 
     return posterior_P
-
-
-# =====================================================================
 
 
 class PrototypeCAM:
@@ -273,7 +229,7 @@ class PrototypeCAM:
                  eta_attract=0.05,
                  eta_repel=0.01,
                  reg_lambda=0.01,
-                 use_prior=False):  # NEW: flag to enable Bayesian prior
+                 use_prior=False):
         self.model = model.eval()
         self.target_layers = target_layers
         self.reshape_transform = reshape_transform
@@ -294,7 +250,7 @@ class PrototypeCAM:
         self.eta_repel = eta_repel
         self.reg_lambda = reg_lambda
 
-        self.use_prior = use_prior  # NEW
+        self.use_prior = use_prior
 
         self.last_weights = None
         self.last_prototypes = None
@@ -648,7 +604,6 @@ class PrototypeCAM:
                 pos_weights = None
                 neg_weights = None
 
-                # ========== misclassification mode (mean) ==========
                 if analysis_mode == 'misclassification':
                     prototypes = self.initialize_prototypes(target_features, device)
 
@@ -697,7 +652,6 @@ class PrototypeCAM:
                     weights = pos_weights * (1 - self.contrastive_weight * neg_weights)
                     all_prototypes.append(prototypes.cpu().detach().numpy())
 
-                # ========== prediction mode (max) ==========
                 elif analysis_mode == 'prediction' and self.use_contrastive:
                     if pred_mask_flat is not None and target_class is not None:
                         unique_classes = torch.unique(pred_mask_flat).cpu().numpy()
@@ -747,16 +701,11 @@ class PrototypeCAM:
                                 sim_target = sim_matrix[:, target_idx]
                                 pos_weights = sim_target
 
-                                # =============================================
-                                # NEW: Bayesian prior modulation (prediction)
-                                # =============================================
                                 if self.use_prior and len(all_class_features_dict) > 1:
-                                    # Step 1: Estimate class priors pi_c
                                     class_priors = compute_class_prior(
                                         pred_mask_flat, list(all_class_features_dict.keys())
                                     )
 
-                                    # Step 2: Estimate covariance for each class
                                     class_covs_for_posterior = {}
                                     for cls in all_class_features_dict:
                                         cov_cls, _ = estimate_covariance(
@@ -764,7 +713,6 @@ class PrototypeCAM:
                                         )
                                         class_covs_for_posterior[cls] = cov_cls
 
-                                    # Step 3: Compute posterior P(P | x_i)
                                     posterior_P = compute_multiclass_posterior(
                                         features,
                                         all_class_prototypes_dict,
@@ -774,10 +722,7 @@ class PrototypeCAM:
                                         self.reg_lambda
                                     )
 
-                                    # Step 4: Modulate pos_weights
-                                    # w_tilde_pos = w_pos * P(P | x_i)
                                     pos_weights = pos_weights * posterior_P
-                                # =============================================
 
                                 other_indices = [
                                     i for i in range(len(class_indices))
@@ -827,7 +772,6 @@ class PrototypeCAM:
                         weights = pos_weights
                         all_prototypes.append(prototypes.cpu().detach().numpy())
 
-                # ========== whynot mode (mean) ==========
                 elif analysis_mode == 'whynot' and self.use_contrastive:
                     if pred_mask_flat is not None and target_class is not None and negative_class is not None:
                         classes_to_process = [target_class, negative_class]
@@ -872,20 +816,15 @@ class PrototypeCAM:
                             else:
                                 neg_weights = torch.zeros(features.shape[0]).to(device)
 
-                            # =============================================
-                            # NEW: Bayesian pairwise posterior (whynot)
-                            # =============================================
                             if (self.use_prior
                                     and target_class in all_class_features_dict
                                     and negative_class in all_class_features_dict):
-                                # Step 1: Estimate class priors for P and Q
                                 class_priors = compute_class_prior(
                                     pred_mask_flat, [target_class, negative_class]
                                 )
                                 prior_P = class_priors[target_class]
                                 prior_Q = class_priors[negative_class]
 
-                                # Step 2: Estimate covariance for P and Q
                                 cov_P, _ = estimate_covariance(
                                     all_class_features_dict[target_class], self.reg_lambda
                                 )
@@ -893,9 +832,6 @@ class PrototypeCAM:
                                     all_class_features_dict[negative_class], self.reg_lambda
                                 )
 
-                                # Step 3: Compute pairwise posterior via sigmoid
-                                # P(P|x; P,Q) = sigma(log(pi_P/pi_Q)
-                                #   + 0.5*(M^2_Q - M^2_P) + 0.5*log(|Sigma_Q|/|Sigma_P|))
                                 posterior_P = compute_pairwise_posterior(
                                     features,
                                     all_class_prototypes_dict[target_class], cov_P, prior_P,
@@ -903,10 +839,7 @@ class PrototypeCAM:
                                     self.reg_lambda
                                 )
 
-                                # Step 4: Modulate pos_weights
-                                # w_tilde_pos = w_pos * P(P | x; P, Q)
                                 pos_weights = pos_weights * posterior_P
-                            # =============================================
 
                             weights = pos_weights * (1 - self.contrastive_weight * neg_weights)
 
@@ -934,7 +867,6 @@ class PrototypeCAM:
                         weights = pos_weights
                         all_prototypes.append(prototypes.cpu().detach().numpy())
 
-                # ========== no contrastive (mean) ==========
                 else:
                     prototypes = self.initialize_prototypes(target_features, device)
                     prototypes = self.update_prototypes(target_features, prototypes)
