@@ -8,11 +8,8 @@
 PrototypeCAM/
 ├── semanticCAM.py                  # Main 
 ├── pytorch_grad_cam/
-│   ├── __init__.py
-│   ├── base_cam.py
 │   ├── prototype.py                # Core 
 │   ├── grad_cam.py
-│   ├── hirescam.py
 │   ├── score_cam.py
 │   ├── ...
 │   └── utils/
